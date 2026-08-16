@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>水果忍者神龟 🍉🐢</title>
+<style>
+  :root {
+    --tmnt-green: #22c55e;
+    --tmnt-dark: #0f3d24;
+    --tmnt-accent: #facc15;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #06130b;
+    font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  canvas#game { display: block; position: fixed; inset: 0; cursor: crosshair; }
+
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px;
+    pointer-events: none;
+    z-index: 20;
+  }
+  .hud-box {
+    display: flex; align-items: center; gap: 14px;
+    pointer-events: auto;
+  }
+  .hud-item {
+    color: #eafff0;
+    font-weight: 700;
+    font-size: 18px;
+    text-shadow: 0 2px 6px rgba(0,0,0,.7);
+    letter-spacing: 1px;
+  }
+  .hud-item b { color: var(--tmnt-accent); font-size: 24px; }
+  #lives { color: #ff5b6e; font-size: 22px; letter-spacing: 2px; }
+  #combo {
+    position: fixed; left: 50%; top: 12%;
+    transform: translate(-50%, -50%);
+    font-size: 54px; font-weight: 900; color: #ffd54f;
+    text-shadow: 0 0 18px #ff9800, 0 3px 0 #b45309;
+    opacity: 0; pointer-events: none; z-index: 25;
+    transition: opacity .12s;
+  }
+  #combo.show { opacity: 1; }
+  #invincible-flag {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(90deg, #22c55e, #86efac);
+    color: #052e16; font-weight: 900; padding: 6px 18px; border-radius: 999px;
+    font-size: 14px; letter-spacing: 2px; opacity: 0; z-index: 25;
+    box-shadow: 0 0 20px #22c55e; transition: opacity .25s;
+  }
+  #invincible-flag.show { opacity: 1; }
+  #invincible-btn {
+    pointer-events: auto; cursor: pointer;
+    background: rgba(34,197,94,.15); border: 2px solid var(--tmnt-green);
+    color: #d7ffe4; font-weight: 800; font-size: 14px; letter-spacing: 1px;
+    padding: 8px 14px; border-radius: 999px; transition: .15s;
+  }
+  #invincible-btn.on { background: var(--tmnt-green); color: #052e16; box-shadow: 0 0 18px #22c55e; }
+
+  /* ---------- Overlay ---------- */
+  #overlay {
+    position: fixed; inset: 0; z-index: 30;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, rgba(34,197,94,.12), rgba(3,18,10,.92) 60%);
+    text-align: center; padding: 24px;
+  }
+  #overlay.hidden { display: none; }
+  .title {
+    font-size: clamp(40px, 9vw, 84px); font-weight: 900; line-height: 1.05;
+    background: linear-gradient(180deg, #a7f3d0, #22c55e 55%, #0f9d4d);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 4px 0 #064e23) drop-shadow(0 0 22px rgba(34,197,94,.55));
+    margin-bottom: 6px;
+  }
+  .subtitle { color: #86efac; letter-spacing: 4px; font-weight: 600; margin-bottom: 26px; font-size: 15px; }
+  .panel {
+    background: rgba(6,30,16,.72); border: 1px solid rgba(34,197,94,.3);
+    border-radius: 18px; padding: 20px 26px; max-width: 460px;
+    color: #d7ffe4; font-size: 15px; line-height: 2; text-align: left;
+    backdrop-filter: blur(6px); margin-bottom: 22px;
+  }
+  .panel b { color: var(--tmnt-accent); }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .emoji { font-size: 20px; }
+  .btn {
+    cursor: pointer; border: none; border-radius: 999px;
+    background: linear-gradient(180deg, #34d399, #16a34a);
+    color: #052e16; font-weight: 900; font-size: 22px; letter-spacing: 3px;
+    padding: 16px 54px; box-shadow: 0 6px 0 #0b5d2e, 0 0 30px rgba(34,197,94,.5);
+    transition: transform .08s;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #0b5d2e; }
+  .score-final { color: #ffd54f; font-size: 64px; font-weight: 900; text-shadow: 0 0 24px #ff9800; }
+  .best { color: #86efac; font-size: 16px; margin-top: 10px; letter-spacing: 1px; }
+  .hint { color: #9bb8a5; font-size: 13px; margin-top: 18px; }
+  .small { font-size: 13px; color: #7fd8a5; margin-top: 12px; }
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud">
+    <div class="hud-box">
+      <div class="hud-item">分数 <b id="score">0</b></div>
+    </div>
+    <div class="hud-box">
+      <div class="hud-item">生命 <span id="lives">❤❤❤</span></div>
+      <button id="invincible-btn">⚡ 无敌模式</button>
+    </div>
+  </div>
+
+  <div id="combo">COMBO x2</div>
+  <div id="invincible-flag">🐢 神龟护体 · 无敌</div>
+
+  <div id="overlay">
+    <div class="title">水果忍者神龟</div>
+    <div class="subtitle">🍉 FRUIT NINJA TURTLE 🐢</div>
+    <div class="panel">
+      <div class="row"><span class="emoji">🍎🍉🍌🍊</span><span> 滑动手势切开水果，别放过任何一颗</span></div>
+      <div class="row"><span class="emoji">💣</span><span> 切到<b>炸弹</b>会扣一条命，躲开它！</span></div>
+      <div class="row"><span class="emoji">🍕</span><span> 切到<b>披萨</b> +50 分（神龟最爱）</span></div>
+      <div class="row"><span class="emoji">🐢</span><span> 切到<b>龟壳</b>获得 6 秒无敌</span></div>
+      <div class="row"><span class="emoji">⚡</span><span> 一键<b>无敌模式</b>：不掉命、炸弹变加分</span></div>
+      <div class="row"><span class="emoji">🔥</span><span> 一刀连切多果 = 连击加分</span></div>
+    </div>
+    <button class="btn" id="start-btn">开始游戏</button>
+    <div class="hint">鼠标 / 手指在屏幕上滑动即可挥刀</div>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ============ 基础设置 ============
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let W = 0, H = 0, dpr = 1;
+  const G = 1600; // 重力
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ============ 水果类型 ============
+  const FRUIT_KEYS = ['apple','banana','watermelon','orange','grape','strawberry','pineapple','kiwi'];
+  const TYPES = {
+    apple:      { kind:'fruit',  value:10, r:34, skin:'#e74c3c', flesh:'#fdebd0', highlight:'#ff8a80', dark:'#a93226', label:'苹果' },
+    banana:     { kind:'fruit',  value:10, r:30, skin:'#f1c40f', flesh:'#fff7cc', highlight:'#ffe066', dark:'#b7950b', label:'香蕉' },
+    watermelon: { kind:'fruit',  value:15, r:46, skin:'#27ae60', flesh:'#ff6b6b', highlight:'#58d68d', dark:'#1e8449', label:'西瓜' },
+    orange:     { kind:'fruit',  value:12, r:32, skin:'#f39c12', flesh:'#ffe0b2', highlight:'#ffb74d', dark:'#d35400', label:'橙子' },
+    grape:      { kind:'fruit',  value:20, r:26, skin:'#8e44ad', flesh:'#d7bde2', highlight:'#bb8fce', dark:'#6c3483', label:'葡萄' },
+    strawberry: { kind:'fruit',  value:10, r:28, skin:'#e91e63', flesh:'#ffcdd2', highlight:'#ff6090', dark:'#ad1457', label:'草莓' },
+    pineapple:  { kind:'fruit',  value:15, r:38, skin:'#f9a825', flesh:'#fff59d', highlight:'#ffd54f', dark:'#f57f17', label:'菠萝' },
+    kiwi:       { kind:'fruit',  value:12, r:28, skin:'#8d6e63', flesh:'#aed581', highlight:'#a1887f', dark:'#5d4037', label:'猕猴桃' },
+    pizza:      { kind:'pizza',  value:50, r:42, skin:'#f5b041', flesh:'#fdebd0', highlight:'#ffd166', dark:'#ca6f1e', label:'披萨' },
+    turtle:     { kind:'turtle', value:0,  r:36, skin:'#27ae60', flesh:'#a9dfbf', highlight:'#58d68d', dark:'#145a32', label:'龟壳' },
+    bomb:       { kind:'bomb',   value:0,  r:30, skin:'#2c3e50', flesh:'#5d6d7e', highlight:'#85929e', dark:'#17202a', label:'炸弹' },
+  };
+
+  // ============ 状态 ============
+  let fruits = [], halves = [], particles = [], trail = [], floaters = [];
+  let score = 0, lives = 3, comboCount = 0;
+  let state = 'menu';            // menu | playing | over
+  let invincible = false;        // 无敌开关
+  let invincibleUntil = 0;       // 临时无敌截止时间(ms)
+  let spawnTimer = 0, spawnInterval = 850;
+  let strokeFruits = 0;          // 当前一刀切中的数量
+  let flash = 0;                 // 屏幕红闪
+  let best = parseInt(localStorage.getItem('fnt-best') || '0', 10) || 0;
+
+  // DOM
+  const scoreEl = document.getElementById('score');
+  const livesEl = document.getElementById('lives');
+  const comboEl = document.getElementById('combo');
+  const invFlagEl = document.getElementById('invincible-flag');
+  const invBtn = document.getElementById('invincible-btn');
+  const overlay = document.getElementById('overlay');
+  const startBtn = document.getElementById('start-btn');
+
+  function isInvincible() { return invincible || Date.now() < invincibleUntil; }
+
+  // ============ 音效（Web Audio 合成）============
+  let actx = null;
+  function ensureAudio() {
+    if (!actx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) actx = new AC();
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+  }
+  function tone(freq, dur, type, vol, slideTo) {
+    if (!actx) return;
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(freq, actx.currentTime);
+    if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, actx.currentTime + dur);
+    g.gain.setValueAtTime(vol || 0.15, actx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + dur);
+    o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  }
+  function noise(dur, vol, filterFreq) {
+    if (!actx) return;
+    const n = actx.createBufferSource();
+    const buf = actx.createBuffer(1, actx.sampleRate * dur, actx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+    n.buffer = buf;
+    const f = actx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = filterFreq || 1000;
+    const g = actx.createGain(); g.gain.value = vol || 0.2;
+    n.connect(f); f.connect(g); g.connect(actx.destination);
+    n.start();
+  }
+  const sfx = {
+    slice() { noise(0.12, 0.25, 2200); tone(700, 0.08, 'triangle', 0.08, 300); },
+    splat() { tone(180, 0.15, 'sine', 0.2, 60); },
+    bomb()  { noise(0.4, 0.5, 120); tone(90, 0.35, 'sawtooth', 0.25, 40); },
+    combo(n){ tone(440 * Math.pow(1.18, Math.min(n,8)), 0.12, 'triangle', 0.15, 660); },
+    miss()  { tone(300, 0.3, 'sine', 0.15, 120); },
+    power() { tone(500, 0.15, 'triangle', 0.18, 900); tone(900, 0.2, 'triangle', 0.12, 1500); },
+    pizza() { [523,659,784].forEach((f,i)=> setTimeout(()=>tone(f,0.12,'triangle',0.15), i*70)); },
+  };
+
+  // ============ 生成 ============
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function pickItem() {
+    const t = performance.now() / 1000;
+    const r = Math.random();
+    if (r < 0.06) return 'pizza';
+    if (r < 0.09) return 'turtle';
+    const bombChance = Math.min(0.12 + t * 0.004, 0.3);
+    if (Math.random() < bombChance) return 'bomb';
+    return FRUIT_KEYS[(Math.random() * FRUIT_KEYS.length) | 0];
+  }
+  function spawnWave() {
+    const n = 1 + ((Math.random() * 3) | 0);
+    for (let i = 0; i < n; i++) {
+      const key = pickItem();
+      const type = TYPES[key];
+      const x = rand(W * 0.08, W * 0.92);
+      const y = H + type.r + rand(0, 30);
+      const vx = rand(-160, 160);
+      const vy = rand(-1320, -1000);
+      const r = type.r * rand(0.85, 1.15);
+      fruits.push({ key, type, x, y, vx, vy, r, rot: rand(0, 6.28), vr: rand(-3, 3) });
+    }
+  }
+
+  // ============ 更新 ============
+  function update(dt) {
+    // 生成
+    spawnTimer -= dt * 1000;
+    if (spawnTimer <= 0) {
+      spawnWave();
+      spawnInterval = Math.max(360, 850 - (performance.now() / 1000) * 6);
+      spawnTimer = spawnInterval;
+    }
+
+    // 水果
+    for (let i = fruits.length - 1; i >= 0; i--) {
+      const f = fruits[i];
+      f.vy += G * dt;
+      f.x += f.vx * dt;
+      f.y += f.vy * dt;
+      f.rot += f.vr * dt;
+      if (f.y - f.r > H + 50) {
+        // 漏掉普通水果才扣命
+        if (f.type.kind === 'fruit') loseLife();
+        fruits.splice(i, 1);
+      }
+    }
+
+    // 半片
+    for (let i = halves.length - 1; i >= 0; i--) {
+      const h = halves[i];
+      h.vy += G * dt;
+      h.x += h.vx * dt;
+      h.y += h.vy * dt;
+      h.rot += h.vr * dt;
+      if (h.y > H + 80) halves.splice(i, 1);
+    }
+
+    // 粒子
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.vy += G * 0.6 * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0 || p.y > H + 40) particles.splice(i, 1);
+    }
+
+    // 浮动背景光点
+    for (const fl of floaters) {
+      fl.y -= fl.speed * dt;
+      fl.x += Math.sin(fl.y * 0.02 + fl.seed) * 0.3;
+      if (fl.y < -20) { fl.y = H + 20; fl.x = rand(0, W); }
+    }
+
+    // 刀光轨迹老化
+    const now = performance.now();
+    trail = trail.filter(p => now - p.t < 260);
+
+    // 红闪衰减
+    if (flash > 0) flash = Math.max(0, flash - dt * 2.4);
+  }
+
+  // ============ 切 ============
+  function distToSeg(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const l2 = dx * dx + dy * dy;
+    if (l2 === 0) return Math.hypot(px - x1, py - y1);
+    let t = ((px - x1) * dx + (py - y1) * dy) / l2;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+  }
+
+  function sliceSegment(x1, y1, x2, y2) {
+    let hit = 0;
+    for (let i = fruits.length - 1; i >= 0; i--) {
+      const f = fruits[i];
+      if (distToSeg(f.x, f.y, x1, y1, x2, y2) < f.r) {
+        onSlice(f);
+        fruits.splice(i, 1);
+        hit++;
+      }
+    }
+    return hit;
+  }
+
+  function onSlice(f) {
+    ensureAudio();
+    if (f.type.kind === 'bomb') {
+      if (isInvincible()) {
+        score += 20; sfx.bomb(); burst(f.x, f.y, '#22c55e', 26);
+      } else {
+        loseLife(); sfx.bomb(); burst(f.x, f.y, '#ff5b6e', 30); flash = 1;
+      }
+      return;
+    }
+    if (f.type.kind === 'turtle') {
+      invincibleUntil = Date.now() + 6000; sfx.power();
+      burst(f.x, f.y, '#22c55e', 34); burst(f.x, f.y, '#facc15', 16);
+      return;
+    }
+
+    // 正常水果 / 披萨
+    strokeFruits++;
+    comboCount = strokeFruits;
+    let pts = f.type.value;
+    if (strokeFruits >= 2) { pts += (strokeFruits - 1) * 5; }
+    score += pts;
+    if (f.type.kind === 'pizza') { sfx.pizza(); burst(f.x, f.y, '#facc15', 40); }
+    else { sfx.slice(); sfx.splat(); }
+
+    // 果汁
+    burst(f.x, f.y, f.type.skin, 18);
+    burst(f.x, f.y, f.type.flesh, 10);
+
+    // 两半
+    spawnHalves(f);
+
+    // 连击提示
+    if (strokeFruits >= 2) {
+      sfx.combo(strokeFruits);
+      showCombo(strokeFruits);
+    }
+  }
+
+  function spawnHalves(f) {
+    for (let s = 0; s < 2; s++) {
+      halves.push({
+        x: f.x, y: f.y, r: f.r,
+        vx: f.vx + (s === 0 ? -1 : 1) * rand(90, 200),
+        vy: f.vy - rand(120, 260),
+        vr: (s === 0 ? -1 : 1) * rand(4, 8),
+        rot: f.rot, skin: f.type.skin, flesh: f.type.flesh, side: s
+      });
+    }
+  }
+
+  function burst(x, y, color, n) {
+    for (let i = 0; i < n; i++) {
+      const a = rand(0, 6.28), sp = rand(120, 620);
+      particles.push({
+        x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 120,
+        r: rand(2.5, 7), color, life: rand(0.4, 0.9)
+      });
+    }
+  }
+
+  function loseLife() {
+    if (isInvincible()) return;
+    lives--;
+    sfx.miss();
+    if (lives <= 0) gameOver();
+  }
+
+  // ============ 渲染 ============
+  function drawBackground() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#0a2b18');
+    g.addColorStop(0.55, '#071a10');
+    g.addColorStop(1, '#030d07');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    // 下水道砖纹
+    ctx.strokeStyle = 'rgba(34,197,94,0.05)';
+    ctx.lineWidth = 1;
+    const bw = 90, bh = 44;
+    for (let y = -bh; y < H + bh; y += bh) {
+      const off = ((y / bh) | 0) % 2 === 0 ? 0 : bw / 2;
+      for (let x = -bw; x < W + bw; x += bw) {
+        ctx.strokeRect(x + off, y, bw, bh);
+      }
+    }
+
+    // 浮动光点
+    ctx.fillStyle = 'rgba(134,239,172,0.12)';
+    for (const fl of floaters) {
+      ctx.beginPath();
+      ctx.arc(fl.x, fl.y, fl.r, 0, 6.28);
+      ctx.fill();
+    }
+
+    // 暗角
+    const vg = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.4, W/2, H/2, Math.max(W,H)*0.75);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawTrail() {
+    if (trail.length < 2) return;
+    const now = performance.now();
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let i = 1; i < trail.length; i++) {
+        const a = trail[i - 1], b = trail[i];
+        const age = (now - b.t) / 260;
+        const alpha = Math.max(0, 1 - age);
+        ctx.strokeStyle = pass === 0
+          ? `rgba(34,197,94,${(alpha * 0.35).toFixed(3)})`
+          : `rgba(240,255,245,${(alpha * 0.9).toFixed(3)})`;
+        ctx.lineWidth = pass === 0 ? 18 * alpha + 2 : 5 * alpha + 1;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  function drawFruit(f) {
+    const t = f.type, r = f.r;
+    ctx.save();
+    ctx.translate(f.x, f.y);
+    ctx.rotate(f.rot);
+
+    if (f.type.kind === 'bomb') {
+      const g = ctx.createRadialGradient(-r*0.35, -r*0.35, r*0.1, 0, 0, r);
+      g.addColorStop(0, t.highlight); g.addColorStop(1, t.skin);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = t.dark; ctx.lineWidth = 2; ctx.stroke();
+      // 引线火花
+      const tw = 0.5 + Math.sin(performance.now() * 0.02 + f.rot * 3) * 0.5;
+      ctx.fillStyle = `rgba(255,214,79,${0.5 + tw * 0.5})`;
+      ctx.beginPath(); ctx.arc(r * 0.55, -r * 0.7, 4 + tw * 3, 0, 6.28); ctx.fill();
+    } else if (f.type.kind === 'pizza') {
+      const g = ctx.createRadialGradient(-r*0.35, -r*0.35, r*0.1, 0, 0, r);
+      g.addColorStop(0, '#ffe8b0'); g.addColorStop(1, t.skin);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = t.dark; ctx.lineWidth = 2.5; ctx.stroke();
+      // 配料
+      ctx.fillStyle = '#c0392b';
+      for (let i = 0; i < 5; i++) {
+        const a = i * 1.256 + f.rot;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.5, Math.sin(a) * r * 0.5, r * 0.14, 0, 6.28); ctx.fill();
+      }
+      ctx.fillStyle = '#f1c40f';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.16, 0, 6.28); ctx.fill();
+    } else if (f.type.kind === 'turtle') {
+      const g = ctx.createRadialGradient(-r*0.35, -r*0.35, r*0.1, 0, 0, r);
+      g.addColorStop(0, t.highlight); g.addColorStop(1, t.skin);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = t.dark; ctx.lineWidth = 3; ctx.stroke();
+      // 龟甲纹路
+      ctx.strokeStyle = t.dark; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = i * (6.28 / 6);
+        ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * r * 0.7, Math.sin(a) * r * 0.7);
+      }
+      ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.45, 0, 6.28); ctx.stroke();
+    } else {
+      const g = ctx.createRadialGradient(-r*0.35, -r*0.35, r*0.1, 0, 0, r);
+      g.addColorStop(0, t.highlight); g.addColorStop(1, t.skin);
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28); ctx.fill();
+      ctx.strokeStyle = t.dark; ctx.lineWidth = 2; ctx.stroke();
+      // 果蒂
+      ctx.strokeStyle = '#4a3b22'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(0, -r * 0.9); ctx.lineTo(0, -r * 0.55); ctx.stroke();
+      ctx.fillStyle = '#27ae60';
+      ctx.beginPath(); ctx.ellipse(-r*0.18, -r*0.95, r*0.28, r*0.14, -0.5, 0, 6.28); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHalf(h) {
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.rotate(h.rot);
+    const a0 = h.side === 0 ? 0 : Math.PI;
+    // 果肉（平切面）
+    ctx.fillStyle = h.flesh;
+    ctx.beginPath();
+    ctx.arc(0, 0, h.r, a0, a0 + Math.PI);
+    ctx.closePath();
+    ctx.fill();
+    // 果皮（圆弧边）
+    ctx.strokeStyle = h.skin;
+    ctx.lineWidth = h.r * 0.22;
+    ctx.beginPath();
+    ctx.arc(0, 0, h.r * 0.86, a0 + 0.15, a0 + Math.PI - 0.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, p.life / 0.9);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, 6.28);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function render() {
+    drawBackground();
+    drawTrail();
+    for (const h of halves) drawHalf(h);
+    for (const f of fruits) drawFruit(f);
+    drawParticles();
+
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255,60,80,${(flash * 0.28).toFixed(3)})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // ============ HUD ============
+  function updateHUD() {
+    scoreEl.textContent = score;
+    livesEl.textContent = '❤'.repeat(Math.max(0, lives)) + '🖤'.repeat(Math.max(0, 3 - lives));
+    invBtn.classList.toggle('on', invincible);
+    invFlagEl.classList.toggle('show', isInvincible());
+  }
+  function showCombo(n) {
+    comboEl.textContent = 'COMBO x' + n;
+    comboEl.classList.add('show');
+    clearTimeout(showCombo._t);
+    showCombo._t = setTimeout(() => comboEl.classList.remove('show'), 700);
+  }
+
+  // ============ 主循环 ============
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.033, (now - last) / 1000);
+    last = now;
+    if (state === 'playing') update(dt);
+    render();
+    updateHUD();
+    requestAnimationFrame(loop);
+  }
+
+  // ============ 输入 ============
+  let pointing = false, px = 0, py = 0;
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function onDown(e) {
+    ensureAudio();
+    const p = getPos(e);
+    px = p.x; py = p.y;
+    pointing = true;
+    strokeFruits = 0;
+    trail = [];
+    trail.push({ x: px, y: py, t: performance.now() });
+  }
+  function onMove(e) {
+    if (!pointing || state !== 'playing') return;
+    e.preventDefault();
+    const p = getPos(e);
+    if (Math.hypot(p.x - px, p.y - py) < 2) return;
+    trail.push({ x: p.x, y: p.y, t: performance.now() });
+    sliceSegment(px, py, p.x, p.y);
+    px = p.x; py = p.y;
+  }
+  function onUp() { pointing = false; }
+
+  canvas.addEventListener('pointerdown', onDown);
+  canvas.addEventListener('pointermove', onMove, { passive: false });
+  window.addEventListener('pointerup', onUp);
+  window.addEventListener('pointercancel', onUp);
+
+  // ============ 流程 ============
+  function startGame() {
+    ensureAudio();
+    fruits = []; halves = []; particles = []; trail = [];
+    score = 0; lives = 3; comboCount = 0; flash = 0;
+    invincibleUntil = 0;
+    spawnTimer = 500; spawnInterval = 850;
+    state = 'playing';
+    overlay.classList.add('hidden');
+  }
+  function gameOver() {
+    state = 'over';
+    if (score > best) { best = score; localStorage.setItem('fnt-best', String(best)); }
+    sfx.bomb();
+    overlay.classList.remove('hidden');
+    overlay.innerHTML =
+      '<div class="title" style="font-size:clamp(34px,7vw,60px)">游戏结束</div>' +
+      '<div class="score-final">' + score + '</div>' +
+      '<div class="best">🏆 最高分：' + best + '</div>' +
+      '<button class="btn" id="restart-btn" style="margin-top:22px">再来一局</button>' +
+      '<div class="hint">点击按钮重新开始</div>';
+    document.getElementById('restart-btn').addEventListener('click', startGame);
+  }
+
+  invBtn.addEventListener('click', () => {
+    invincible = !invincible;
+    ensureAudio();
+    if (invincible) sfx.power();
+  });
+  startBtn.addEventListener('click', startGame);
+
+  // 初始化背景浮点
+  for (let i = 0; i < 26; i++) {
+    floaters.push({ x: rand(0, W), y: rand(0, H), r: rand(1.5, 4), speed: rand(8, 26), seed: rand(0, 6.28) });
+  }
+
+  updateHUD();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
